@@ -19,6 +19,7 @@ import { useRouter } from 'vue-router'
 import {
   defineComponent,
   onMounted,
+  onUnmounted,
   ref,
   getCurrentInstance,
   PropType,
@@ -37,7 +38,8 @@ import {
 } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
 import { SearchOutlined } from '@vicons/antd'
-import { useTable } from './table/use-table'
+import { useTable, useDetailPageStore } from './table/use-table'
+import { useIsDetailPageStore, isEmpty } from './edit/use-edit'
 import { useFileStore } from '@/store/file/file'
 import Card from '@/components/card'
 import ResourceFolderModal from './folder'
@@ -104,8 +106,33 @@ export default defineComponent({
     const handleRenameFile = () => {
       variables.renameShowRef = true
     }
+    const detailPageStore = useDetailPageStore()
+    const isDetailPageStore = useIsDetailPageStore()
 
+    const handleDetailBackList = () => {
+      if (isDetailPageStore.getIsDetailPage) {
+        variables.resourceType = detailPageStore.getResourceType
+        variables.fullName = detailPageStore.getFullName
+        variables.tenantCode = detailPageStore.getTenantCode
+        variables.searchRef = detailPageStore.getSearchValue
+        variables.pagination.page = detailPageStore.getPage
+        variables.pagination.pageSize = detailPageStore.getPageSize
+        if (!isEmpty(variables.searchRef)) {
+          handleConditions()
+        }
+        detailPageStore.$reset()
+        isDetailPageStore.$reset()
+      } else {
+        detailPageStore.$reset()
+        isDetailPageStore.$reset()
+      }
+    }
+
+    onUnmounted(() => {
+      isDetailPageStore.$reset()
+    })
     onMounted(() => {
+      handleDetailBackList()
       createColumns(variables)
       fileStore.setCurrentDir(variables.fullName)
       breadListRef.value = fileStore.getCurrentDir
@@ -127,21 +154,15 @@ export default defineComponent({
     }
 
     const goBread = (fullName: string) => {
-      const { resourceType, tenantCode } = variables
-      const baseDir =
-        resourceType === 'UDF'
-          ? userStore.getBaseUdfDir
-          : userStore.getBaseResDir
+      const { tenantCode } = variables
+      const baseDir = userStore.getBaseResDir
       if (fullName === '' || !fullName.startsWith(baseDir)) {
         router.push({
-          name: resourceType === 'UDF' ? 'resource-manage' : 'file-manage'
+          name: 'file-manage'
         })
       } else {
         router.push({
-          name:
-            resourceType === 'UDF'
-              ? 'resource-sub-manage'
-              : 'resource-file-subdirectory',
+          name: 'resource-file-subdirectory',
           query: { prefix: fullName, tenantCode: tenantCode }
         })
       }
@@ -177,10 +198,7 @@ export default defineComponent({
       handleUploadFile,
       tableWidth
     } = this
-    const manageTitle =
-      this.resourceType === 'UDF'
-        ? t('resource.udf.udf_resources')
-        : t('resource.file.file_manage')
+    const manageTitle = t('resource.file.file_manage')
 
     return (
       <NSpace vertical>
@@ -194,15 +212,13 @@ export default defineComponent({
               >
                 {t('resource.file.create_folder')}
               </NButton>
-              {this.resourceType !== 'UDF' && (
+              {
                 <NButton onClick={handleCreateFile} class='btn-create-file'>
                   {t('resource.file.create_file')}
                 </NButton>
-              )}
+              }
               <NButton onClick={handleUploadFile} class='btn-upload-resource'>
-                {this.resourceType === 'UDF'
-                  ? t('resource.udf.upload_udf_resources')
-                  : t('resource.file.upload_files')}
+                {t('resource.file.upload_files')}
               </NButton>
             </NButtonGroup>
             <NSpace>

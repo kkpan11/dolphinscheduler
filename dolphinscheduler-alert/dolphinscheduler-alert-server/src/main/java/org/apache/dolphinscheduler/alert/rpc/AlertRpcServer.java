@@ -18,43 +18,19 @@
 package org.apache.dolphinscheduler.alert.rpc;
 
 import org.apache.dolphinscheduler.alert.config.AlertConfig;
-import org.apache.dolphinscheduler.remote.NettyRemotingServer;
-import org.apache.dolphinscheduler.remote.factory.NettyRemotingServerFactory;
-import org.apache.dolphinscheduler.remote.processor.NettyRequestProcessor;
-
-import java.util.List;
+import org.apache.dolphinscheduler.extract.base.config.NettyServerConfig;
+import org.apache.dolphinscheduler.extract.base.server.SpringServerMethodInvokerDiscovery;
 
 import lombok.extern.slf4j.Slf4j;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Slf4j
 @Service
-public class AlertRpcServer implements AutoCloseable {
+public class AlertRpcServer extends SpringServerMethodInvokerDiscovery implements AutoCloseable {
 
-    @Autowired
-    private List<NettyRequestProcessor> nettyRequestProcessors;
-    @Autowired
-    private AlertConfig alertConfig;
-
-    private NettyRemotingServer nettyRemotingServer;
-
-    public void start() {
-        log.info("Starting alert rpc server...");
-        nettyRemotingServer = NettyRemotingServerFactory.buildNettyRemotingServer(alertConfig.getPort());
-        for (NettyRequestProcessor nettyRequestProcessor : nettyRequestProcessors) {
-            nettyRemotingServer.registerProcessor(nettyRequestProcessor);
-            log.info("Success register netty processor: {}", nettyRequestProcessor.getClass().getName());
-        }
-        nettyRemotingServer.start();
-        log.info("Started alert rpc server...");
+    public AlertRpcServer(AlertConfig alertConfig) {
+        super(NettyServerConfig.builder().serverName("AlertRpcServer").listenPort(alertConfig.getPort()).build());
     }
 
-    @Override
-    public void close() throws Exception {
-        log.info("Closing alert rpc server...");
-        nettyRemotingServer.close();
-        log.info("Closed alert rpc server...");
-    }
 }

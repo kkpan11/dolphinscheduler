@@ -103,7 +103,7 @@ export function useCustomCellBuilder() {
           text: truncation
         },
         rect: {
-          fill: flag === 'NO' ? '#f3f3f5' : '#ffffff'
+          fill: flag === 'NO' ? 'var(--custom-disable-bg)' : '#ffffff'
         }
       }
     }
@@ -119,9 +119,9 @@ export function useCustomCellBuilder() {
     const edges: Edge.Metadata[] = []
 
     const locations =
-      parseLocationStr(definition.processDefinition.locations) || []
+      parseLocationStr(definition.workflowDefinition.locations) || []
     const tasks = definition.taskDefinitionList
-    const connects = definition.processTaskRelationList
+    const connects = definition.workflowTaskRelationList
     const taskTypeMap = {} as { [key in string]: TaskType }
 
     tasks.forEach((task) => {

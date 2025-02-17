@@ -18,8 +18,9 @@
 package org.apache.dolphinscheduler.api.controller;
 
 import static org.apache.dolphinscheduler.api.enums.Status.QUERY_PLUGINS_ERROR;
+import static org.apache.dolphinscheduler.api.enums.Status.VERSION_INFO_STATE_ERROR;
 
-import org.apache.dolphinscheduler.api.aspect.AccessLogAnnotation;
+import org.apache.dolphinscheduler.api.dto.ProductInfoDto;
 import org.apache.dolphinscheduler.api.exceptions.ApiException;
 import org.apache.dolphinscheduler.api.service.UiPluginService;
 import org.apache.dolphinscheduler.api.utils.Result;
@@ -66,7 +67,6 @@ public class UiPluginController extends BaseController {
     @GetMapping(value = "/query-by-type")
     @ResponseStatus(HttpStatus.CREATED)
     @ApiException(QUERY_PLUGINS_ERROR)
-    @AccessLogAnnotation(ignoreRequestArgs = "loginUser")
     public Result queryUiPluginsByType(@Parameter(hidden = true) @RequestAttribute(value = Constants.SESSION_USER) User loginUser,
                                        @RequestParam(value = "pluginType") PluginType pluginType) {
 
@@ -81,11 +81,19 @@ public class UiPluginController extends BaseController {
     @GetMapping(value = "/{id}")
     @ResponseStatus(HttpStatus.CREATED)
     @ApiException(QUERY_PLUGINS_ERROR)
-    @AccessLogAnnotation(ignoreRequestArgs = "loginUser")
     public Result queryUiPluginDetailById(@Parameter(hidden = true) @RequestAttribute(value = Constants.SESSION_USER) User loginUser,
                                           @PathVariable("id") Integer pluginId) {
 
         Map<String, Object> result = uiPluginService.queryUiPluginDetailById(pluginId);
         return returnDataList(result);
+    }
+
+    @Operation(summary = "queryProductInfo", description = "QUERY_PRODUCT_INFO")
+    @GetMapping(value = "/query-product-info")
+    @ResponseStatus(HttpStatus.OK)
+    @ApiException(VERSION_INFO_STATE_ERROR)
+    public Result<ProductInfoDto> queryProductInfo() {
+        ProductInfoDto result = uiPluginService.queryProductInfo();
+        return Result.success(result);
     }
 }

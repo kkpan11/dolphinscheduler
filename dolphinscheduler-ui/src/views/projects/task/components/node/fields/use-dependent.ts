@@ -23,9 +23,9 @@ import { useTaskNodeStore } from '@/store/project/task-node'
 import { queryAllProjectListForDependent } from '@/service/modules/projects'
 import { tasksState } from '@/common/common'
 import {
-  queryProcessDefinitionList,
+  queryWorkflowDefinitionList,
   getTasksByDefinitionList
-} from '@/service/modules/process-definition'
+} from '@/service/modules/workflow-definition'
 import { Router, useRouter } from 'vue-router'
 import type {
   IJsonItem,
@@ -61,7 +61,7 @@ export function useDependent(model: { [field: string]: any }): IJsonItem[] {
   const dependentResult = nodeStore.getDependentResult
   const TasksStateConfig = tasksState(t)
   const projectList = ref([] as IRenderOption[])
-  const processCache = {} as {
+  const workflowCache = {} as {
     [key: number]: IRenderOption[]
   }
   const taskCache = {} as {
@@ -69,15 +69,18 @@ export function useDependent(model: { [field: string]: any }): IJsonItem[] {
   }
   const selectOptions = ref([] as IDependTaskOptions[])
 
+  const DependentTypeOptions = [
+    {
+      value: 'DEPENDENT_ON_WORKFLOW',
+      label: t('project.node.dependent_on_workflow')
+    },
+    {
+      value: 'DEPENDENT_ON_TASK',
+      label: t('project.node.dependent_on_task')
+    }
+  ]
+
   const CYCLE_LIST = [
-    {
-      value: 'month',
-      label: t('project.node.month')
-    },
-    {
-      value: 'week',
-      label: t('project.node.week')
-    },
     {
       value: 'day',
       label: t('project.node.day')
@@ -85,6 +88,14 @@ export function useDependent(model: { [field: string]: any }): IJsonItem[] {
     {
       value: 'hour',
       label: t('project.node.hour')
+    },
+    {
+      value: 'week',
+      label: t('project.node.week')
+    },
+    {
+      value: 'month',
+      label: t('project.node.month')
     }
   ]
   const DATE_LIST = {
@@ -203,52 +214,60 @@ export function useDependent(model: { [field: string]: any }): IJsonItem[] {
     }))
     return projectList
   }
-  const getProcessList = async (code: number) => {
-    if (processCache[code]) {
-      return processCache[code]
+  const getWorkflowList = async (code: number) => {
+    if (workflowCache[code]) {
+      return workflowCache[code]
     }
-    const result = await queryProcessDefinitionList(code)
-    const processList = result.map((item: { code: number; name: string }) => ({
+    const result = await queryWorkflowDefinitionList(code)
+    const workflowList = result.map((item: { code: number; name: string }) => ({
       value: item.code,
       label: () => h(NEllipsis, null, item.name),
       filterLabel: item.name
     }))
-    processCache[code] = processList
+    workflowCache[code] = workflowList
 
-    return processList
+    return workflowList
   }
 
-  const getTaskList = async (code: number, processCode: number) => {
-    if (taskCache[processCode]) {
-      return taskCache[processCode]
+  const getTaskList = async (code: number, workflowCode: number) => {
+    if (taskCache[workflowCode]) {
+      return taskCache[workflowCode]
     }
-    const result = await getTasksByDefinitionList(code, processCode)
+    const result = await getTasksByDefinitionList(code, workflowCode)
     const taskList = result.map((item: { code: number; name: string }) => ({
       value: item.code,
       label: () => h(NEllipsis, null, item.name),
       filterLabel: item.name
     }))
     taskList.unshift({
-      value: 0,
-      label: 'ALL'
+      value: -1,
+      label: 'ALL',
+      filterLabel: 'ALL'
     })
-    taskCache[processCode] = taskList
+    taskCache[workflowCode] = taskList
     return taskList
   }
 
   const renderState = (item: {
     definitionCode: number
     depTaskCode: number
-    cycle: string
+    projectCode: number
     dateValue: string
   }) => {
     if (!item || router.currentRoute.value.name !== 'workflow-instance-detail')
       return null
-    const key = `${item.definitionCode}-${item.depTaskCode}-${item.cycle}-${item.dateValue}`
+    const key = `${item.projectCode}-${item.definitionCode}-${item.depTaskCode}-${item.dateValue}`
     const state: ITaskState = dependentResult[key]
-    return h(NIcon, { size: 24, color: TasksStateConfig[state].color }, () =>
-      h(TasksStateConfig[state].icon)
-    )
+    let icon: any
+    let color: string
+    if (state) {
+      icon = TasksStateConfig[state]?.icon
+      color = TasksStateConfig[state]?.color
+    } else {
+      icon = TasksStateConfig.RUNNING_EXECUTION.icon
+      color = TasksStateConfig.RUNNING_EXECUTION.color
+    }
+    return h(NIcon, { size: 24, color: color }, () => h(icon))
   }
 
   onMounted(() => {
@@ -266,9 +285,15 @@ export function useDependent(model: { [field: string]: any }): IJsonItem[] {
         item.dependItemList?.forEach(
           async (dependItem: IDependentItem, itemIndex: number) => {
             itemListOptions.value[itemIndex] = {}
+
+            if (!dependItem.dependentType) {
+              if (dependItem.depTaskCode == 0)
+                dependItem.dependentType = 'DEPENDENT_ON_WORKFLOW'
+              else dependItem.dependentType = 'DEPENDENT_ON_TASK'
+            }
             if (dependItem.projectCode) {
               itemListOptions.value[itemIndex].definitionCodeOptions =
-                await getProcessList(dependItem.projectCode)
+                await getWorkflowList(dependItem.projectCode)
             }
             if (dependItem.projectCode && dependItem.definitionCode) {
               itemListOptions.value[itemIndex].depTaskCodeOptions =
@@ -300,6 +325,22 @@ export function useDependent(model: { [field: string]: any }): IJsonItem[] {
         children: [
           (j = 0) => ({
             type: 'select',
+            field: 'dependentType',
+            name: t('project.node.dependent_type'),
+            span: 24,
+            props: {
+              onUpdateValue: (dependentType: string) => {
+                const item = model.dependTaskList[i].dependItemList[j]
+                if (item.definitionCode)
+                  item.depTaskCode =
+                    dependentType === 'DEPENDENT_ON_WORKFLOW' ? 0 : -1
+              }
+            },
+            options: DependentTypeOptions,
+            value: 'DEPENDENT_ON_WORKFLOW'
+          }),
+          (j = 0) => ({
+            type: 'select',
             field: 'projectCode',
             name: t('project.node.project_name'),
             span: 24,
@@ -315,7 +356,7 @@ export function useDependent(model: { [field: string]: any }): IJsonItem[] {
                 const options = selectOptions?.value[i] || {}
                 const itemListOptions = options?.dependItemList || []
                 const itemOptions = {} as IDependentItemOptions
-                itemOptions.definitionCodeOptions = await getProcessList(
+                itemOptions.definitionCodeOptions = await getWorkflowList(
                   projectCode
                 )
                 itemListOptions[j] = itemOptions
@@ -323,6 +364,7 @@ export function useDependent(model: { [field: string]: any }): IJsonItem[] {
                 selectOptions.value[i] = options
                 item.depTaskCode = null
                 item.definitionCode = null
+                item.parameterPassing = false
               }
             },
             options: projectList,
@@ -341,7 +383,7 @@ export function useDependent(model: { [field: string]: any }): IJsonItem[] {
             type: 'select',
             field: 'definitionCode',
             span: 24,
-            name: t('project.node.process_name'),
+            name: t('project.node.workflow_name'),
             props: {
               filterable: true,
               filter: (query: string, option: IRenderOption) => {
@@ -349,11 +391,12 @@ export function useDependent(model: { [field: string]: any }): IJsonItem[] {
                   .toLowerCase()
                   .includes(query.toLowerCase())
               },
-              onUpdateValue: async (processCode: number) => {
+              onUpdateValue: async (workflowCode: number) => {
                 const item = model.dependTaskList[i].dependItemList[j]
                 selectOptions.value[i].dependItemList[j].depTaskCodeOptions =
-                  await getTaskList(item.projectCode, processCode)
-                item.depTaskCode = 0
+                  await getTaskList(item.projectCode, workflowCode)
+                item.depTaskCode =
+                  item.dependentType === 'DEPENDENT_ON_WORKFLOW' ? 0 : -1
               }
             },
             options:
@@ -365,7 +408,7 @@ export function useDependent(model: { [field: string]: any }): IJsonItem[] {
               trigger: ['input', 'blur'],
               validator(validate: any, value: string) {
                 if (!value) {
-                  return Error(t('project.node.process_name_tips'))
+                  return Error(t('project.node.workflow_name_tips'))
                 }
               }
             }
@@ -373,7 +416,10 @@ export function useDependent(model: { [field: string]: any }): IJsonItem[] {
           (j = 0) => ({
             type: 'select',
             field: 'depTaskCode',
-            span: 24,
+            span: computed(() => {
+              const item = model.dependTaskList[i].dependItemList[j]
+              return item.dependentType === 'DEPENDENT_ON_WORKFLOW' ? 0 : 24
+            }),
             name: t('project.node.task_name'),
             props: {
               filterable: true,
@@ -410,6 +456,7 @@ export function useDependent(model: { [field: string]: any }): IJsonItem[] {
               }
             },
             options: CYCLE_LIST,
+            value: CYCLE_LIST.length > 0 ? CYCLE_LIST[0].value : '',
             path: `dependTaskList.${i}.dependItemList.${j}.cycle`,
             rule: {
               required: true,
@@ -427,7 +474,9 @@ export function useDependent(model: { [field: string]: any }): IJsonItem[] {
             span: 10,
             name: ' ',
             options:
-              selectOptions.value[i]?.dependItemList[j]?.dateOptions || [],
+              selectOptions.value[i]?.dependItemList[j]?.dateOptions ||
+              DATE_LIST.day,
+            value: DATE_LIST.day[0].value,
             path: `dependTaskList.${i}.dependItemList.${j}.dateValue`,
             rule: {
               trigger: ['input', 'blur'],
@@ -444,6 +493,13 @@ export function useDependent(model: { [field: string]: any }): IJsonItem[] {
             span: 2,
             name: ' ',
             widget: renderState(model.dependTaskList[i]?.dependItemList[j])
+          }),
+          (j = 0) => ({
+            type: 'switch',
+            field: 'parameterPassing',
+            span: 20,
+            name: t('project.node.dependent_task_parameter_passing'),
+            path: `dependTaskList.${i}.dependItemList.${j}.parameterPassing`
           })
         ]
       }),

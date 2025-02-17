@@ -24,8 +24,6 @@ import static org.apache.dolphinscheduler.api.enums.Status.GET_USER_INFO_ERROR;
 import static org.apache.dolphinscheduler.api.enums.Status.GRANT_DATASOURCE_ERROR;
 import static org.apache.dolphinscheduler.api.enums.Status.GRANT_K8S_NAMESPACE_ERROR;
 import static org.apache.dolphinscheduler.api.enums.Status.GRANT_PROJECT_ERROR;
-import static org.apache.dolphinscheduler.api.enums.Status.GRANT_RESOURCE_ERROR;
-import static org.apache.dolphinscheduler.api.enums.Status.GRANT_UDF_FUNCTION_ERROR;
 import static org.apache.dolphinscheduler.api.enums.Status.QUERY_USER_LIST_PAGING_ERROR;
 import static org.apache.dolphinscheduler.api.enums.Status.REVOKE_PROJECT_ERROR;
 import static org.apache.dolphinscheduler.api.enums.Status.UNAUTHORIZED_USER_ERROR;
@@ -33,7 +31,8 @@ import static org.apache.dolphinscheduler.api.enums.Status.UPDATE_USER_ERROR;
 import static org.apache.dolphinscheduler.api.enums.Status.USER_LIST_ERROR;
 import static org.apache.dolphinscheduler.api.enums.Status.VERIFY_USERNAME_ERROR;
 
-import org.apache.dolphinscheduler.api.aspect.AccessLogAnnotation;
+import org.apache.dolphinscheduler.api.audit.OperatorLog;
+import org.apache.dolphinscheduler.api.audit.enums.AuditType;
 import org.apache.dolphinscheduler.api.enums.Status;
 import org.apache.dolphinscheduler.api.exceptions.ApiException;
 import org.apache.dolphinscheduler.api.service.UsersService;
@@ -77,18 +76,6 @@ public class UsersController extends BaseController {
     @Autowired
     private UsersService usersService;
 
-    /**
-     * create user
-     *
-     * @param loginUser login user
-     * @param userName user name
-     * @param userPassword user password
-     * @param email email
-     * @param tenantId tenant id
-     * @param phone phone
-     * @param queue queue
-     * @return create result code
-     */
     @Operation(summary = "createUser", description = "CREATE_USER_NOTES")
     @Parameters({
             @Parameter(name = "userName", description = "USER_NAME", required = true, schema = @Schema(implementation = String.class)),
@@ -102,7 +89,7 @@ public class UsersController extends BaseController {
     @PostMapping(value = "/create")
     @ResponseStatus(HttpStatus.CREATED)
     @ApiException(CREATE_USER_ERROR)
-    @AccessLogAnnotation(ignoreRequestArgs = {"loginUser", "userPassword"})
+    @OperatorLog(auditType = AuditType.USER_CREATE)
     public Result createUser(@Parameter(hidden = true) @RequestAttribute(value = Constants.SESSION_USER) User loginUser,
                              @RequestParam(value = "userName") String userName,
                              @RequestParam(value = "userPassword") String userPassword,
@@ -124,9 +111,9 @@ public class UsersController extends BaseController {
      * query user list paging
      *
      * @param loginUser login user
-     * @param pageNo page number
+     * @param pageNo    page number
      * @param searchVal search avlue
-     * @param pageSize page size
+     * @param pageSize  page size
      * @return user list page
      */
     @Operation(summary = "queryUserList", description = "QUERY_USER_LIST_NOTES")
@@ -138,32 +125,26 @@ public class UsersController extends BaseController {
     @GetMapping(value = "/list-paging")
     @ResponseStatus(HttpStatus.OK)
     @ApiException(QUERY_USER_LIST_PAGING_ERROR)
-    @AccessLogAnnotation(ignoreRequestArgs = "loginUser")
     public Result queryUserList(@Parameter(hidden = true) @RequestAttribute(value = Constants.SESSION_USER) User loginUser,
                                 @RequestParam("pageNo") Integer pageNo,
                                 @RequestParam("pageSize") Integer pageSize,
                                 @RequestParam(value = "searchVal", required = false) String searchVal) {
-        Result result = checkPageParams(pageNo, pageSize);
-        if (!result.checkResult()) {
-            return result;
-
-        }
+        checkPageParams(pageNo, pageSize);
         searchVal = ParameterUtils.handleEscapes(searchVal);
-        result = usersService.queryUserList(loginUser, searchVal, pageNo, pageSize);
-        return result;
+        return usersService.queryUserList(loginUser, searchVal, pageNo, pageSize);
     }
 
     /**
      * update user
      *
-     * @param loginUser login user
-     * @param id user id
-     * @param userName user name
+     * @param loginUser    login user
+     * @param id           user id
+     * @param userName     user name
      * @param userPassword user password
-     * @param email email
-     * @param tenantId tennat id
-     * @param phone phone
-     * @param queue queue
+     * @param email        email
+     * @param tenantId     tennat id
+     * @param phone        phone
+     * @param queue        queue
      * @return update result code
      */
     @Operation(summary = "updateUser", description = "UPDATE_USER_NOTES")
@@ -180,27 +161,35 @@ public class UsersController extends BaseController {
     @PostMapping(value = "/update")
     @ResponseStatus(HttpStatus.OK)
     @ApiException(UPDATE_USER_ERROR)
-    @AccessLogAnnotation(ignoreRequestArgs = {"loginUser", "userPassword"})
-    public Result updateUser(@Parameter(hidden = true) @RequestAttribute(value = Constants.SESSION_USER) User loginUser,
-                             @RequestParam(value = "id") int id,
-                             @RequestParam(value = "userName") String userName,
-                             @RequestParam(value = "userPassword") String userPassword,
-                             @RequestParam(value = "queue", required = false, defaultValue = "") String queue,
-                             @RequestParam(value = "email") String email,
-                             @RequestParam(value = "tenantId") int tenantId,
-                             @RequestParam(value = "phone", required = false) String phone,
-                             @RequestParam(value = "state", required = false) int state,
-                             @RequestParam(value = "timeZone", required = false) String timeZone) throws Exception {
-        Map<String, Object> result = usersService.updateUser(loginUser, id, userName, userPassword, email, tenantId,
-                phone, queue, state, timeZone);
-        return returnDataList(result);
+    @OperatorLog(auditType = AuditType.USER_UPDATE)
+    public Result<User> updateUser(@Parameter(hidden = true) @RequestAttribute(value = Constants.SESSION_USER) User loginUser,
+                                   @RequestParam(value = "id") int id,
+                                   @RequestParam(value = "userName") String userName,
+                                   @RequestParam(value = "userPassword") String userPassword,
+                                   @RequestParam(value = "queue", required = false, defaultValue = "") String queue,
+                                   @RequestParam(value = "email") String email,
+                                   @RequestParam(value = "tenantId") int tenantId,
+                                   @RequestParam(value = "phone", required = false) String phone,
+                                   @RequestParam(value = "state", required = false) int state,
+                                   @RequestParam(value = "timeZone", required = false) String timeZone) throws Exception {
+        User user = usersService.updateUser(loginUser,
+                id,
+                userName,
+                userPassword,
+                email,
+                tenantId,
+                phone,
+                queue,
+                state,
+                timeZone);
+        return Result.success(user);
     }
 
     /**
      * delete user by id
      *
      * @param loginUser login user
-     * @param id user id
+     * @param id        user id
      * @return delete result code
      */
     @Operation(summary = "delUserById", description = "DELETE_USER_BY_ID_NOTES")
@@ -210,7 +199,7 @@ public class UsersController extends BaseController {
     @PostMapping(value = "/delete")
     @ResponseStatus(HttpStatus.OK)
     @ApiException(DELETE_USER_BY_ID_ERROR)
-    @AccessLogAnnotation
+    @OperatorLog(auditType = AuditType.USER_DELETE)
     public Result delUserById(@Parameter(hidden = true) @RequestAttribute(value = Constants.SESSION_USER) User loginUser,
                               @RequestParam(value = "id") int id) throws Exception {
         Map<String, Object> result = usersService.deleteUserById(loginUser, id);
@@ -220,8 +209,8 @@ public class UsersController extends BaseController {
     /**
      * revoke project By Id
      *
-     * @param loginUser login user
-     * @param userId user id
+     * @param loginUser  login user
+     * @param userId     user id
      * @param projectIds project id array
      * @return revoke result code
      */
@@ -233,7 +222,6 @@ public class UsersController extends BaseController {
     @PostMapping(value = "/revoke-project-by-id")
     @ResponseStatus(HttpStatus.OK)
     @ApiException(REVOKE_PROJECT_ERROR)
-    @AccessLogAnnotation
     public Result revokeProjectById(@Parameter(hidden = true) @RequestAttribute(value = Constants.SESSION_USER) User loginUser,
                                     @RequestParam(value = "userId") int userId,
                                     @RequestParam(value = "projectIds") String projectIds) {
@@ -244,8 +232,8 @@ public class UsersController extends BaseController {
     /**
      * grant project with read permission
      *
-     * @param loginUser login user
-     * @param userId user id
+     * @param loginUser  login user
+     * @param userId     user id
      * @param projectIds project id array
      * @return grant result code
      */
@@ -257,7 +245,6 @@ public class UsersController extends BaseController {
     @PostMapping(value = "/grant-project-with-read-perm")
     @ResponseStatus(HttpStatus.OK)
     @ApiException(GRANT_PROJECT_ERROR)
-    @AccessLogAnnotation
     public Result grantProjectWithReadPerm(@Parameter(hidden = true) @RequestAttribute(value = Constants.SESSION_USER) User loginUser,
                                            @RequestParam(value = "userId") int userId,
                                            @RequestParam(value = "projectIds") String projectIds) {
@@ -268,8 +255,8 @@ public class UsersController extends BaseController {
     /**
      * grant project
      *
-     * @param loginUser login user
-     * @param userId user id
+     * @param loginUser  login user
+     * @param userId     user id
      * @param projectIds project id array
      * @return grant result code
      */
@@ -281,7 +268,6 @@ public class UsersController extends BaseController {
     @PostMapping(value = "/grant-project")
     @ResponseStatus(HttpStatus.OK)
     @ApiException(GRANT_PROJECT_ERROR)
-    @AccessLogAnnotation
     public Result grantProject(@Parameter(hidden = true) @RequestAttribute(value = Constants.SESSION_USER) User loginUser,
                                @RequestParam(value = "userId") int userId,
                                @RequestParam(value = "projectIds") String projectIds) {
@@ -292,8 +278,8 @@ public class UsersController extends BaseController {
     /**
      * grant project by code
      *
-     * @param loginUser login user
-     * @param userId user id
+     * @param loginUser   login user
+     * @param userId      user id
      * @param projectCode project code
      * @return grant result code
      */
@@ -305,7 +291,6 @@ public class UsersController extends BaseController {
     @PostMapping(value = "/grant-project-by-code")
     @ResponseStatus(HttpStatus.OK)
     @ApiException(GRANT_PROJECT_ERROR)
-    @AccessLogAnnotation
     public Result grantProjectByCode(@Parameter(hidden = true) @RequestAttribute(value = Constants.SESSION_USER) User loginUser,
                                      @RequestParam(value = "userId") int userId,
                                      @RequestParam(value = "projectCode") long projectCode) {
@@ -316,9 +301,9 @@ public class UsersController extends BaseController {
     /**
      * revoke project
      *
-     * @param loginUser     login user
-     * @param userId        user id
-     * @param projectCode   project code
+     * @param loginUser   login user
+     * @param userId      user id
+     * @param projectCode project code
      * @return revoke result code
      */
     @Operation(summary = "revokeProject", description = "REVOKE_PROJECT_NOTES")
@@ -329,7 +314,6 @@ public class UsersController extends BaseController {
     @PostMapping(value = "/revoke-project")
     @ResponseStatus(HttpStatus.OK)
     @ApiException(REVOKE_PROJECT_ERROR)
-    @AccessLogAnnotation
     public Result revokeProject(@Parameter(hidden = true) @RequestAttribute(value = Constants.SESSION_USER) User loginUser,
                                 @RequestParam(value = "userId") int userId,
                                 @RequestParam(value = "projectCode") long projectCode) {
@@ -338,58 +322,10 @@ public class UsersController extends BaseController {
     }
 
     /**
-     * grant resource
-     *
-     * @param loginUser login user
-     * @param userId user id
-     * @param resourceIds resource id array
-     * @return grant result code
-     */
-    @Operation(summary = "grantResource", description = "GRANT_RESOURCE_NOTES")
-    @Parameters({
-            @Parameter(name = "userId", description = "USER_ID", required = true, schema = @Schema(implementation = int.class, example = "100")),
-            @Parameter(name = "resourceIds", description = "RESOURCE_IDS", required = true, schema = @Schema(implementation = String.class))
-    })
-    @PostMapping(value = "/grant-file")
-    @ResponseStatus(HttpStatus.OK)
-    @ApiException(GRANT_RESOURCE_ERROR)
-    @AccessLogAnnotation
-    public Result grantResource(@Parameter(hidden = true) @RequestAttribute(value = Constants.SESSION_USER) User loginUser,
-                                @RequestParam(value = "userId") int userId,
-                                @RequestParam(value = "resourceIds") String resourceIds) {
-        Map<String, Object> result = usersService.grantResources(loginUser, userId, resourceIds);
-        return returnDataList(result);
-    }
-
-    /**
-     * grant udf function
-     *
-     * @param loginUser login user
-     * @param userId user id
-     * @param udfIds udf id array
-     * @return grant result code
-     */
-    @Operation(summary = "grantUDFFunc", description = "GRANT_UDF_FUNC_NOTES")
-    @Parameters({
-            @Parameter(name = "userId", description = "USER_ID", required = true, schema = @Schema(implementation = int.class, example = "100")),
-            @Parameter(name = "udfIds", description = "UDF_IDS", required = true, schema = @Schema(implementation = String.class))
-    })
-    @PostMapping(value = "/grant-udf-func")
-    @ResponseStatus(HttpStatus.OK)
-    @ApiException(GRANT_UDF_FUNCTION_ERROR)
-    @AccessLogAnnotation
-    public Result grantUDFFunc(@Parameter(hidden = true) @RequestAttribute(value = Constants.SESSION_USER) User loginUser,
-                               @RequestParam(value = "userId") int userId,
-                               @RequestParam(value = "udfIds") String udfIds) {
-        Map<String, Object> result = usersService.grantUDFFunction(loginUser, userId, udfIds);
-        return returnDataList(result);
-    }
-
-    /**
      * grant namespace
      *
-     * @param loginUser login user
-     * @param userId user id
+     * @param loginUser    login user
+     * @param userId       user id
      * @param namespaceIds namespace id array
      * @return grant result code
      */
@@ -401,7 +337,6 @@ public class UsersController extends BaseController {
     @PostMapping(value = "/grant-namespace")
     @ResponseStatus(HttpStatus.OK)
     @ApiException(GRANT_K8S_NAMESPACE_ERROR)
-    @AccessLogAnnotation
     public Result grantNamespace(@Parameter(hidden = true) @RequestAttribute(value = Constants.SESSION_USER) User loginUser,
                                  @RequestParam(value = "userId") int userId,
                                  @RequestParam(value = "namespaceIds") String namespaceIds) {
@@ -412,8 +347,8 @@ public class UsersController extends BaseController {
     /**
      * grant datasource
      *
-     * @param loginUser login user
-     * @param userId user id
+     * @param loginUser     login user
+     * @param userId        user id
      * @param datasourceIds data source id array
      * @return grant result code
      */
@@ -425,7 +360,6 @@ public class UsersController extends BaseController {
     @PostMapping(value = "/grant-datasource")
     @ResponseStatus(HttpStatus.OK)
     @ApiException(GRANT_DATASOURCE_ERROR)
-    @AccessLogAnnotation
     public Result grantDataSource(@Parameter(hidden = true) @RequestAttribute(value = Constants.SESSION_USER) User loginUser,
                                   @RequestParam(value = "userId") int userId,
                                   @RequestParam(value = "datasourceIds") String datasourceIds) {
@@ -443,7 +377,6 @@ public class UsersController extends BaseController {
     @GetMapping(value = "/get-user-info")
     @ResponseStatus(HttpStatus.OK)
     @ApiException(GET_USER_INFO_ERROR)
-    @AccessLogAnnotation
     public Result getUserInfo(@Parameter(hidden = true) @RequestAttribute(value = Constants.SESSION_USER) User loginUser) {
         Map<String, Object> result = usersService.getUserInfo(loginUser);
         return returnDataList(result);
@@ -459,7 +392,6 @@ public class UsersController extends BaseController {
     @GetMapping(value = "/list")
     @ResponseStatus(HttpStatus.OK)
     @ApiException(USER_LIST_ERROR)
-    @AccessLogAnnotation
     public Result listUser(@Parameter(hidden = true) @RequestAttribute(value = Constants.SESSION_USER) User loginUser) {
         Map<String, Object> result = usersService.queryAllGeneralUsers(loginUser);
         return returnDataList(result);
@@ -474,7 +406,6 @@ public class UsersController extends BaseController {
     @GetMapping(value = "/list-all")
     @ResponseStatus(HttpStatus.OK)
     @ApiException(USER_LIST_ERROR)
-    @AccessLogAnnotation
     public Result listAll(@RequestAttribute(value = Constants.SESSION_USER) User loginUser) {
         Map<String, Object> result = usersService.queryUserList(loginUser);
         return returnDataList(result);
@@ -484,7 +415,7 @@ public class UsersController extends BaseController {
      * verify username
      *
      * @param loginUser login user
-     * @param userName user name
+     * @param userName  user name
      * @return true if user name not exists, otherwise return false
      */
     @Operation(summary = "verifyUserName", description = "VERIFY_USER_NAME_NOTES")
@@ -494,7 +425,6 @@ public class UsersController extends BaseController {
     @GetMapping(value = "/verify-user-name")
     @ResponseStatus(HttpStatus.OK)
     @ApiException(VERIFY_USERNAME_ERROR)
-    @AccessLogAnnotation
     public Result verifyUserName(@Parameter(hidden = true) @RequestAttribute(value = Constants.SESSION_USER) User loginUser,
                                  @RequestParam(value = "userName") String userName) {
         return usersService.verifyUserName(userName);
@@ -503,7 +433,7 @@ public class UsersController extends BaseController {
     /**
      * unauthorized user
      *
-     * @param loginUser login user
+     * @param loginUser    login user
      * @param alertgroupId alert group id
      * @return unauthorize result code
      */
@@ -514,7 +444,6 @@ public class UsersController extends BaseController {
     @GetMapping(value = "/unauth-user")
     @ResponseStatus(HttpStatus.OK)
     @ApiException(UNAUTHORIZED_USER_ERROR)
-    @AccessLogAnnotation
     public Result unauthorizedUser(@Parameter(hidden = true) @RequestAttribute(value = Constants.SESSION_USER) User loginUser,
                                    @RequestParam("alertgroupId") Integer alertgroupId) {
         Map<String, Object> result = usersService.unauthorizedUser(loginUser, alertgroupId);
@@ -524,7 +453,7 @@ public class UsersController extends BaseController {
     /**
      * authorized user
      *
-     * @param loginUser login user
+     * @param loginUser    login user
      * @param alertgroupId alert group id
      * @return authorized result code
      */
@@ -535,7 +464,6 @@ public class UsersController extends BaseController {
     @GetMapping(value = "/authed-user")
     @ResponseStatus(HttpStatus.OK)
     @ApiException(AUTHORIZED_USER_ERROR)
-    @AccessLogAnnotation
     public Result authorizedUser(@Parameter(hidden = true) @RequestAttribute(value = Constants.SESSION_USER) User loginUser,
                                  @RequestParam("alertgroupId") Integer alertgroupId) {
         try {
@@ -550,10 +478,10 @@ public class UsersController extends BaseController {
     /**
      * user registry
      *
-     * @param userName user name
-     * @param userPassword user password
+     * @param userName       user name
+     * @param userPassword   user password
      * @param repeatPassword repeat password
-     * @param email user email
+     * @param email          user email
      */
     @Operation(summary = "registerUser", description = "REGISTER_USER_NOTES")
     @Parameters({
@@ -565,7 +493,6 @@ public class UsersController extends BaseController {
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.OK)
     @ApiException(CREATE_USER_ERROR)
-    @AccessLogAnnotation
     public Result<Object> registerUser(@RequestParam(value = "userName") String userName,
                                        @RequestParam(value = "userPassword") String userPassword,
                                        @RequestParam(value = "repeatPassword") String repeatPassword,
@@ -594,7 +521,6 @@ public class UsersController extends BaseController {
     @PostMapping("/activate")
     @ResponseStatus(HttpStatus.OK)
     @ApiException(UPDATE_USER_ERROR)
-    @AccessLogAnnotation
     public Result<Object> activateUser(@Parameter(hidden = true) @RequestAttribute(value = Constants.SESSION_USER) User loginUser,
                                        @RequestParam(value = "userName") String userName) {
         userName = ParameterUtils.handleEscapes(userName);
@@ -614,7 +540,6 @@ public class UsersController extends BaseController {
     @PostMapping("/batch/activate")
     @ResponseStatus(HttpStatus.OK)
     @ApiException(UPDATE_USER_ERROR)
-    @AccessLogAnnotation
     public Result<Object> batchActivateUser(@Parameter(hidden = true) @RequestAttribute(value = Constants.SESSION_USER) User loginUser,
                                             @RequestBody List<String> userNames) {
         List<String> formatUserNames =

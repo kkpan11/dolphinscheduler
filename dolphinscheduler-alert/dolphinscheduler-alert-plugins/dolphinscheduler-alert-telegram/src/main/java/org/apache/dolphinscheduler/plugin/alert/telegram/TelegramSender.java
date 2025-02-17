@@ -19,6 +19,7 @@ package org.apache.dolphinscheduler.plugin.alert.telegram;
 
 import org.apache.dolphinscheduler.alert.api.AlertData;
 import org.apache.dolphinscheduler.alert.api.AlertResult;
+import org.apache.dolphinscheduler.alert.api.HttpServiceRetryStrategy;
 import org.apache.dolphinscheduler.common.utils.JSONUtils;
 
 import org.apache.commons.lang3.StringUtils;
@@ -104,7 +105,7 @@ public final class TelegramSender {
         } catch (Exception e) {
             log.warn("send telegram alert msg exception : {}", e.getMessage());
             result = new AlertResult();
-            result.setStatus("false");
+            result.setSuccess(false);
             result.setMessage(String.format("send telegram alert fail. %s", e.getMessage()));
         }
         return result;
@@ -112,7 +113,7 @@ public final class TelegramSender {
 
     private AlertResult parseRespToResult(String resp) {
         AlertResult result = new AlertResult();
-        result.setStatus("false");
+        result.setSuccess(false);
         if (null == resp || resp.isEmpty()) {
             result.setMessage("send telegram msg error. telegram server resp is empty");
             return result;
@@ -126,7 +127,7 @@ public final class TelegramSender {
             result.setMessage(String.format("send telegram alert fail. telegram server error_code: %d, description: %s",
                     response.errorCode, response.description));
         } else {
-            result.setStatus("true");
+            result.setSuccess(true);
             result.setMessage("send telegram msg success.");
         }
         return result;
@@ -152,7 +153,7 @@ public final class TelegramSender {
             String resp;
             try {
                 HttpEntity entity = response.getEntity();
-                resp = EntityUtils.toString(entity, "UTF-8");
+                resp = EntityUtils.toString(entity, StandardCharsets.UTF_8);
                 EntityUtils.consume(entity);
             } finally {
                 response.close();
@@ -239,14 +240,15 @@ public final class TelegramSender {
     }
 
     private static CloseableHttpClient getDefaultClient() {
-        return HttpClients.createDefault();
+        return HttpClients.custom().setRetryHandler(HttpServiceRetryStrategy.retryStrategy).build();
     }
 
     private static CloseableHttpClient getProxyClient(String proxy, int port, String user, String password) {
         HttpHost httpProxy = new HttpHost(proxy, port);
         CredentialsProvider provider = new BasicCredentialsProvider();
         provider.setCredentials(new AuthScope(httpProxy), new UsernamePasswordCredentials(user, password));
-        return HttpClients.custom().setDefaultCredentialsProvider(provider).build();
+        return HttpClients.custom().setRetryHandler(HttpServiceRetryStrategy.retryStrategy)
+                .setDefaultCredentialsProvider(provider).build();
     }
 
     private static RequestConfig getProxyConfig(String proxy, int port) {

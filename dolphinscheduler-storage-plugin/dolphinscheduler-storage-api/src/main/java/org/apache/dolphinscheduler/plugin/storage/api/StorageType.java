@@ -27,7 +27,13 @@ public enum StorageType {
     S3(3, "S3"),
     GCS(4, "GCS"),
 
-    ABS(5, "ABS");
+    ABS(5, "ABS"),
+
+    OBS(6, "OBS"),
+
+    COS(7, "COS"),
+
+    ;
 
     private final int code;
     private final String name;

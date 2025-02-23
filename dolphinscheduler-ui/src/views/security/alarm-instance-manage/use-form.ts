@@ -111,6 +111,15 @@ export function useForm() {
     state.detailForm.pluginDefineId = record.pluginDefineId
     if (record.pluginInstanceParams)
       state.json = JSON.parse(record.pluginInstanceParams)
+    // ensure number type field has number type value
+    state.json.forEach((item: any) => {
+      if (item.validate && item.validate.length) {
+        const numberTypeItem = item.validate.find(
+          (v: any) => v.type === 'number'
+        )
+        if (numberTypeItem) item.value = +item.value
+      }
+    })
   }
 
   return {

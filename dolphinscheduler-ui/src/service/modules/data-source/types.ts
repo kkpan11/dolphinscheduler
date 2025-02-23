@@ -38,6 +38,11 @@ type IDataBase =
   | 'SNOWFLAKE'
   | 'HANA'
   | 'DORIS'
+  | 'KYUUBI'
+  | 'ZEPPELIN'
+  | 'SAGEMAKER'
+  | 'K8S'
+  | 'ALIYUN_SERVERLESS_SPARK'
 
 type IDataBaseLabel =
   | 'MYSQL'
@@ -57,6 +62,11 @@ type IDataBaseLabel =
   | 'DAMENG'
   | 'OCEANBASE'
   | 'SSH'
+  | 'KYUUBI'
+  | 'ZEPPELIN'
+  | 'SAGEMAKER'
+  | 'K8S'
+  | 'ALIYUN_SERVERLESS_SPARK'
 
 interface IDataSource {
   id?: number
@@ -77,12 +87,18 @@ interface IDataSource {
   database?: string
   connectType?: string
   other?: object
-  endpoint?: string
+  restEndpoint?: string
+  kubeConfig?: string
+  namespace?: string
   MSIClientId?: string
   dbUser?: string
   compatibleMode?: string
   publicKey?: string
   datawarehouse?: string
+  accessKeyId?: string
+  accessKeySecret?: string
+  regionId?: string
+  endpoint?: string
 }
 
 interface ListReq {

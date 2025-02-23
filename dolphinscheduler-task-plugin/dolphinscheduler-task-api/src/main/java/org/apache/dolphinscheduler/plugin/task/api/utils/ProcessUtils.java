@@ -17,12 +17,11 @@
 
 package org.apache.dolphinscheduler.plugin.task.api.utils;
 
-import static org.apache.dolphinscheduler.common.constants.Constants.APPID_COLLECT;
-import static org.apache.dolphinscheduler.common.constants.Constants.DEFAULT_COLLECT_WAY;
+import static org.apache.dolphinscheduler.plugin.task.api.TaskConstants.APPID_COLLECT;
 import static org.apache.dolphinscheduler.plugin.task.api.TaskConstants.COMMA;
+import static org.apache.dolphinscheduler.plugin.task.api.TaskConstants.DEFAULT_COLLECT_WAY;
 import static org.apache.dolphinscheduler.plugin.task.api.TaskConstants.TASK_TYPE_SET_K8S;
 
-import org.apache.dolphinscheduler.common.enums.ResourceManagerType;
 import org.apache.dolphinscheduler.common.utils.OSUtils;
 import org.apache.dolphinscheduler.common.utils.PropertyUtils;
 import org.apache.dolphinscheduler.plugin.task.api.K8sTaskExecutionContext;
@@ -33,12 +32,14 @@ import org.apache.dolphinscheduler.plugin.task.api.am.ApplicationManager;
 import org.apache.dolphinscheduler.plugin.task.api.am.KubernetesApplicationManager;
 import org.apache.dolphinscheduler.plugin.task.api.am.KubernetesApplicationManagerContext;
 import org.apache.dolphinscheduler.plugin.task.api.am.YarnApplicationManagerContext;
+import org.apache.dolphinscheduler.plugin.task.api.enums.ResourceManagerType;
 import org.apache.dolphinscheduler.plugin.task.api.enums.TaskExecutionStatus;
 
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -71,35 +72,86 @@ public final class ProcessUtils {
      * Initialization regularization, solve the problem of pre-compilation performance,
      * avoid the thread safety problem of multi-thread operation
      */
-    private static final Pattern MACPATTERN = Pattern.compile("-[+|-]-\\s(\\d+)");
+    private static final Pattern MACPATTERN = Pattern.compile("-[+|-][-|=]\\s(\\d+)");
 
     /**
      * Expression of PID recognition in Windows scene
      */
-    private static final Pattern WINDOWSATTERN = Pattern.compile("(\\d+)");
+    private static final Pattern WINDOWSPATTERN = Pattern.compile("(\\d+)");
 
     /**
-     * kill tasks according to different task types.
+     * Expression of PID recognition in Linux scene
      */
-    @Deprecated
+    private static final Pattern LINUXPATTERN = Pattern.compile("\\((\\d+)\\)");
+
+    /**
+     * Terminate the task process, support multi-level signal processing and fallback strategy
+     * @param request Task execution context
+     * @return Whether the process was successfully terminated
+     */
     public static boolean kill(@NonNull TaskExecutionContext request) {
         try {
-            log.info("Begin kill task instance, processId: {}", request.getProcessId());
+            log.info("Begin killing task instance, processId: {}", request.getProcessId());
             int processId = request.getProcessId();
             if (processId == 0) {
-                log.error("Task instance kill failed, processId is not exist");
-                return false;
+                log.info("Task instance has already finished, no need to kill");
+                return true;
             }
 
-            String cmd = String.format("kill -9 %s", getPidsStr(processId));
-            cmd = OSUtils.getSudoCmd(request.getTenantCode(), cmd);
-            log.info("process id:{}, cmd:{}", processId, cmd);
+            // Get all child processes
+            String pids = getPidsStr(processId);
+            String[] pidArray = pids.split("\\s+");
+            if (pidArray.length == 0) {
+                log.warn("No valid PIDs found for process: {}", processId);
+                return true;
+            }
 
-            OSUtils.exeCmd(cmd);
-            log.info("Success kill task instance, processId: {}", request.getProcessId());
-            return true;
+            // 1. Try to terminate gracefully (SIGINT)
+            boolean gracefulKillSuccess = sendKillSignal("SIGINT", pids, request.getTenantCode());
+            if (gracefulKillSuccess) {
+                log.info("Successfully killed process tree using SIGINT, processId: {}", processId);
+                return true;
+            }
+
+            // 2. Try to terminate forcefully (SIGTERM)
+            boolean termKillSuccess = sendKillSignal("SIGTERM", pids, request.getTenantCode());
+            if (termKillSuccess) {
+                log.info("Successfully killed process tree using SIGTERM, processId: {}", processId);
+                return true;
+            }
+
+            // 3. As a last resort, use `kill -9`
+            log.warn("SIGINT & SIGTERM failed, using SIGKILL as a last resort for processId: {}", processId);
+            boolean forceKillSuccess = sendKillSignal("SIGKILL", pids, request.getTenantCode());
+            if (forceKillSuccess) {
+                log.info("Successfully sent SIGKILL signal to process tree, processId: {}", processId);
+            } else {
+                log.error("Error sending SIGKILL signal to process tree, processId: {}", processId);
+            }
+            return forceKillSuccess;
+
         } catch (Exception e) {
             log.error("Kill task instance error, processId: {}", request.getProcessId(), e);
+            return false;
+        }
+    }
+
+    /**
+     * Send a kill signal to a process group
+     * @param signal Signal type (SIGINT, SIGTERM, SIGKILL)
+     * @param pids Process ID list
+     * @param tenantCode Tenant code
+     */
+    private static boolean sendKillSignal(String signal, String pids, String tenantCode) {
+        try {
+            String killCmd = String.format("kill -s %s %s", signal, pids);
+            killCmd = OSUtils.getSudoCmd(tenantCode, killCmd);
+            log.info("Sending {} to process group: {}, command: {}", signal, pids, killCmd);
+            OSUtils.exeCmd(killCmd);
+
+            return true;
+        } catch (Exception e) {
+            log.error("Error sending {} to process: {}", signal, pids, e);
             return false;
         }
     }
@@ -112,26 +164,45 @@ public final class ProcessUtils {
      * @throws Exception exception
      */
     public static String getPidsStr(int processId) throws Exception {
-        StringBuilder sb = new StringBuilder();
-        Matcher mat = null;
+
+        String rawPidStr;
+
         // pstree pid get sub pids
         if (SystemUtils.IS_OS_MAC) {
-            String pids = OSUtils.exeCmd(String.format("%s -sp %d", TaskConstants.PSTREE, processId));
-            if (null != pids) {
-                mat = MACPATTERN.matcher(pids);
+            rawPidStr = OSUtils.exeCmd(String.format("%s -sp %d", TaskConstants.PSTREE, processId));
+        } else if (SystemUtils.IS_OS_LINUX) {
+            rawPidStr = OSUtils.exeCmd(String.format("%s -p %d", TaskConstants.PSTREE, processId));
+        } else {
+            rawPidStr = OSUtils.exeCmd(String.format("%s -p %d", TaskConstants.PSTREE, processId));
+        }
+
+        return parsePidStr(rawPidStr);
+    }
+
+    public static String parsePidStr(String rawPidStr) {
+
+        log.info("prepare to parse pid, raw pid string: {}", rawPidStr);
+        ArrayList<String> allPidList = new ArrayList<>();
+        Matcher mat = null;
+        if (SystemUtils.IS_OS_MAC) {
+            if (StringUtils.isNotEmpty(rawPidStr)) {
+                mat = MACPATTERN.matcher(rawPidStr);
+            }
+        } else if (SystemUtils.IS_OS_LINUX) {
+            if (StringUtils.isNotEmpty(rawPidStr)) {
+                mat = LINUXPATTERN.matcher(rawPidStr);
             }
         } else {
-            String pids = OSUtils.exeCmd(String.format("%s -p %d", TaskConstants.PSTREE, processId));
-            mat = WINDOWSATTERN.matcher(pids);
-        }
-
-        if (null != mat) {
-            while (mat.find()) {
-                sb.append(mat.group(1)).append(" ");
+            if (StringUtils.isNotEmpty(rawPidStr)) {
+                mat = WINDOWSPATTERN.matcher(rawPidStr);
             }
         }
-
-        return sb.toString().trim();
+        if (null != mat) {
+            while (mat.find()) {
+                allPidList.add(mat.group(1));
+            }
+        }
+        return String.join(" ", allPidList).trim();
     }
 
     /**
@@ -219,4 +290,9 @@ public final class ProcessUtils {
                         new KubernetesApplicationManagerContext(k8sTaskExecutionContext, taskAppId, containerName));
     }
 
+    public static void removeK8sClientCache(String taskAppId) {
+        KubernetesApplicationManager applicationManager =
+                (KubernetesApplicationManager) applicationManagerMap.get(ResourceManagerType.KUBERNETES);
+        applicationManager.removeCache(taskAppId);
+    }
 }

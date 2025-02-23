@@ -17,8 +17,6 @@
 
 package org.apache.dolphinscheduler.common.utils;
 
-import org.apache.dolphinscheduler.common.constants.Constants;
-
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.conn.util.InetAddressUtils;
@@ -31,19 +29,28 @@ import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import lombok.extern.slf4j.Slf4j;
 
-/**
- * NetUtils
- */
+import com.google.common.collect.Sets;
+
 @Slf4j
 public class NetUtils {
+
+    private static final String DOLPHIN_SCHEDULER_NETWORK_INTERFACE_PREFERRED =
+            "dolphin.scheduler.network.interface.preferred";
+    private static final String DOLPHIN_SCHEDULER_NETWORK_INTERFACE_RESTRICT =
+            "dolphin.scheduler.network.interface.restrict";
+
+    private static final String DOLPHIN_SCHEDULER_NETWORK_PRIORITY_STRATEGY =
+            "dolphin.scheduler.network.priority.strategy";
 
     private static final String NETWORK_PRIORITY_DEFAULT = "default";
     private static final String NETWORK_PRIORITY_INNER = "inner";
@@ -203,17 +210,26 @@ public class NetUtils {
                 .collect(Collectors.toList());
 
         // Use the specified network interface if set
-        if (StringUtils.isNotBlank(specifyNetworkInterfaceName())) {
-            String specifyNetworkInterfaceName = specifyNetworkInterfaceName();
+        String specifiedNetworkInterfaceName = specifyNetworkInterfaceName();
+        if (StringUtils.isNotBlank(specifiedNetworkInterfaceName)) {
             validNetworkInterfaces = validNetworkInterfaces.stream()
-                    .filter(networkInterface -> specifyNetworkInterfaceName.equals(networkInterface.getDisplayName()))
+                    .filter(networkInterface -> specifiedNetworkInterfaceName.equals(networkInterface.getDisplayName()))
                     .collect(Collectors.toList());
             if (CollectionUtils.isEmpty(validNetworkInterfaces)) {
                 throw new IllegalArgumentException(
-                        "The specified network interface: " + specifyNetworkInterfaceName + " is not found");
+                        "The specified network interface: " + specifiedNetworkInterfaceName + " is not found");
             }
+            log.info("Use the specified network interface: {} -> {}", specifiedNetworkInterfaceName,
+                    validNetworkInterfaces);
         }
 
+        Set<String> restrictNetworkInterfaceName = restrictNetworkInterfaceName();
+        if (CollectionUtils.isNotEmpty(restrictNetworkInterfaceName)) {
+            validNetworkInterfaces = validNetworkInterfaces.stream()
+                    .filter(validNetworkInterface -> !restrictNetworkInterfaceName
+                            .contains(validNetworkInterface.getDisplayName()))
+                    .collect(Collectors.toList());
+        }
         return filterByNetworkPriority(validNetworkInterfaces);
     }
 
@@ -290,23 +306,32 @@ public class NetUtils {
         Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
         while (interfaces.hasMoreElements()) {
             NetworkInterface networkInterface = interfaces.nextElement();
-            log.info("Found NetworkInterface: {}", networkInterface);
+            log.debug("Found NetworkInterface: {}", networkInterface);
             validNetworkInterfaces.add(networkInterface);
         }
+        log.info("Get all NetworkInterfaces: {}", validNetworkInterfaces);
         return validNetworkInterfaces;
     }
 
     private static String specifyNetworkInterfaceName() {
-        return PropertyUtils.getString(
-                Constants.DOLPHIN_SCHEDULER_NETWORK_INTERFACE_PREFERRED,
-                System.getProperty(Constants.DOLPHIN_SCHEDULER_NETWORK_INTERFACE_PREFERRED));
+        return PropertyUtils.getString(DOLPHIN_SCHEDULER_NETWORK_INTERFACE_PREFERRED,
+                System.getProperty(DOLPHIN_SCHEDULER_NETWORK_INTERFACE_PREFERRED));
+    }
+
+    private static Set<String> restrictNetworkInterfaceName() {
+        return PropertyUtils.getSet(DOLPHIN_SCHEDULER_NETWORK_INTERFACE_RESTRICT, value -> {
+            if (StringUtils.isEmpty(value)) {
+                return Collections.emptySet();
+            }
+            return Arrays.stream(value.split(",")).map(String::trim).collect(Collectors.toSet());
+        }, Sets.newHashSet("docker0"));
     }
 
     private static List<NetworkInterface> filterByNetworkPriority(List<NetworkInterface> validNetworkInterfaces) {
         if (CollectionUtils.isEmpty(validNetworkInterfaces)) {
             return Collections.emptyList();
         }
-        String networkPriority = PropertyUtils.getString(Constants.DOLPHIN_SCHEDULER_NETWORK_PRIORITY_STRATEGY,
+        String networkPriority = PropertyUtils.getString(DOLPHIN_SCHEDULER_NETWORK_PRIORITY_STRATEGY,
                 NETWORK_PRIORITY_DEFAULT);
         switch (networkPriority) {
             case NETWORK_PRIORITY_DEFAULT:

@@ -23,6 +23,7 @@ import org.apache.dolphinscheduler.spi.enums.DbType;
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.List;
 
 public interface DataSourceProcessor {
 
@@ -35,7 +36,8 @@ public interface DataSourceProcessor {
     BaseDataSourceParamDTO castDatasourceParamDTO(String paramJson);
 
     /**
-     * check datasource param is valid
+     * check datasource param is valid.
+     * @throws IllegalArgumentException if invalid
      */
     void checkDatasourceParam(BaseDataSourceParamDTO datasourceParam);
 
@@ -93,17 +95,16 @@ public interface DataSourceProcessor {
      * @param connectionParam connectionParam
      * @return {@link Connection}
      */
+    // todo: Change to return a ConnectionWrapper
     Connection getConnection(ConnectionParam connectionParam) throws ClassNotFoundException, SQLException, IOException;
 
     /**
-     * test connection, use for not jdbc datasource
+     * test connection
      *
      * @param connectionParam connectionParam
      * @return true if connection is valid
      */
-    default boolean testConnection(ConnectionParam connectionParam) {
-        return false;
-    }
+    boolean checkDataSourceConnectivity(ConnectionParam connectionParam);
 
     /**
      * @return {@link DbType}
@@ -114,4 +115,6 @@ public interface DataSourceProcessor {
      * get datasource processor
      */
     DataSourceProcessor create();
+
+    List<String> splitAndRemoveComment(String sql);
 }

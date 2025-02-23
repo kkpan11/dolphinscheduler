@@ -25,7 +25,7 @@ class Changelog:
 
     Each pull requests will only once in final result. If pull requests have more than one label we need,
     will classify to high priority label type, currently priority is
-    `feature > bug > improvement > document > chore`. pr will into feature section if it with both `feature`,
+    `dsip > feature > bug > improvement > document > chore`. pr will into feature section if it with both `feature`,
     `improvement`, `document` label.
 
     :param prs: pull requests list.
@@ -35,6 +35,7 @@ class Changelog:
     key_labels = "labels"
     key_name = "name"
 
+    label_dsip = "dsip"
     label_feature = "feature"
     label_bug = "bug"
     label_improvement = "improvement"
@@ -46,16 +47,21 @@ class Changelog:
 
     def __init__(self, prs: List[Dict]):
         self.prs = prs
+        self.dsips = []
         self.features = []
         self.bugfixs = []
         self.improvements = []
         self.documents = []
         self.chores = []
+        self.others = []
 
     def generate(self) -> str:
         """Generate changelog."""
         self.classify()
         final = []
+        if self.dsips:
+            detail = f"## DSIP{self.changelog_prefix}{self._convert(self.dsips)}{self.changelog_suffix}"
+            final.append(detail)
         if self.features:
             detail = f"## Feature{self.changelog_prefix}{self._convert(self.features)}{self.changelog_suffix}"
             final.append(detail)
@@ -77,6 +83,9 @@ class Changelog:
         if self.chores:
             detail = f"## Chore{self.changelog_prefix}{self._convert(self.chores)}{self.changelog_suffix}"
             final.append(detail)
+        if self.others:
+            detail = f"## Others{self.changelog_prefix}{self._convert(self.others)}{self.changelog_suffix}"
+            final.append(detail)
         return "\n".join(final)
 
     @staticmethod
@@ -94,7 +103,9 @@ class Changelog:
         for pr in self.prs:
             if self.key_labels not in pr:
                 raise KeyError("PR %s do not have labels", pr[self.key_number])
-            if self._is_feature(pr):
+            if self._is_dsip(pr):
+                self.dsips.append(pr)
+            elif self._is_feature(pr):
                 self.features.append(pr)
             elif self._is_bugfix(pr):
                 self.bugfixs.append(pr)
@@ -105,11 +116,16 @@ class Changelog:
             elif self._is_chore(pr):
                 self.chores.append(pr)
             else:
-                raise KeyError(
-                    "There must at least one of labels `feature|bug|improvement|document|chore`"
-                    "but it do not, pr: %s",
-                    pr["html_url"],
-                )
+                self.others.append(pr)
+
+    def _is_dsip(self, pr: Dict) -> bool:
+        """Belong to dsip pull requests."""
+        return any(
+            [
+                label[self.key_name].lower() == self.label_dsip
+                for label in pr[self.key_labels]
+            ]
+        )
 
     def _is_feature(self, pr: Dict) -> bool:
         """Belong to feature pull requests."""

@@ -18,12 +18,11 @@
 import { axios } from '@/service/service'
 
 import {
-  UpdateProjectPreferenceReq
+  UpdateProjectPreferenceReq,
+  UpdateProjectPreferenceStateReq
 } from './types'
 
-export function queryProjectPreferenceByProjectCode(
-  projectCode: number
-): any {
+export function queryProjectPreferenceByProjectCode(projectCode: number): any {
   return axios({
     url: `/projects/${projectCode}/project-preference`,
     method: 'get'
@@ -37,6 +36,17 @@ export function updateProjectPreference(
   return axios({
     url: `/projects/${projectCode}/project-preference`,
     method: 'put',
+    data
+  })
+}
+
+export function updateProjectPreferenceState(
+  data: UpdateProjectPreferenceStateReq,
+  projectCode: number
+): any {
+  return axios({
+    url: `/projects/${projectCode}/project-preference`,
+    method: 'post',
     data
   })
 }

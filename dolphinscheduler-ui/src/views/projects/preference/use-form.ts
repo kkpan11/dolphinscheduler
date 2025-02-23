@@ -25,10 +25,14 @@ import * as Fields from '@/views/projects/task/components/node/fields'
 import { Router, useRouter } from 'vue-router'
 import {
   queryProjectPreferenceByProjectCode,
-  updateProjectPreference
+  updateProjectPreference,
+  updateProjectPreferenceState
 } from '@/service/modules/projects-preference'
 import { useI18n } from 'vue-i18n'
-import { UpdateProjectPreferenceReq } from '@/service/modules/projects-preference/types'
+import {
+  UpdateProjectPreferenceReq,
+  UpdateProjectPreferenceStateReq
+} from '@/service/modules/projects-preference/types'
 import { useWarningType } from '@/views/projects/preference/components/use-warning-type'
 import { useTenant } from '@/views/projects/preference/components/use-tenant'
 import { useAlertGroup } from '@/views/projects/preference/components/use-alert-group'
@@ -44,6 +48,7 @@ export function useForm() {
   const elementsRef = ref([]) as Ref<IFormItem[]>
   const rulesRef = ref({})
   const formProps = ref({})
+  const stateRef = ref(0)
 
   formProps.value = {
     labelPlacement: 'left',
@@ -75,6 +80,7 @@ export function useForm() {
       const result = await queryProjectPreferenceByProjectCode(projectCode)
       if (result?.preferences) {
         setValues(JSON.parse(result.preferences))
+        stateRef.value = result.state
       }
     }
   }
@@ -92,10 +98,20 @@ export function useForm() {
     })
   }
 
+  const handleUpdateState = (value: number) => {
+    const requestData = {
+      state: value
+    } as UpdateProjectPreferenceStateReq
+
+    updateProjectPreferenceState(requestData, projectCode).then(() => {
+      window.$message.success(t('project.preference.success'))
+    })
+  }
+
   const preferencesItems: IJsonItem[] = [
     Fields.useTaskPriority(),
     useTenant(),
-    Fields.useWorkerGroup(),
+    Fields.useWorkerGroup(projectCode),
     Fields.useEnvironmentName(data.model, true),
     ...Fields.useFailed(),
     useWarningType(),
@@ -104,12 +120,18 @@ export function useForm() {
   ]
 
   const restructurePreferencesItems = (preferencesItems: any) => {
-    for (let item of preferencesItems) {
+    for (const item of preferencesItems) {
       if (item.validate?.required) {
         item.validate.required = false
         item.span = 12
       }
-      Object.assign(item, { props: { style: 'width: 250px' } })
+      if (item.type === 'select') {
+        Object.assign(item, {
+          props: { style: 'width: 250px', clearable: true }
+        })
+      } else {
+        Object.assign(item, { props: { style: 'width: 250px' } })
+      }
     }
     return preferencesItems
   }
@@ -129,8 +151,10 @@ export function useForm() {
     elementsRef,
     rulesRef,
     model: data.model,
+    stateRef,
     formProps,
     t,
-    handleUpdate
+    handleUpdate,
+    handleUpdateState
   }
 }

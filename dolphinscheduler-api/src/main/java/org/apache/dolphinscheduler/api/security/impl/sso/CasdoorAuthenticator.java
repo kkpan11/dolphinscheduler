@@ -27,6 +27,8 @@ import java.security.MessageDigest;
 
 import javax.servlet.http.HttpServletRequest;
 
+import lombok.NonNull;
+
 import org.casbin.casdoor.entity.CasdoorUser;
 import org.casbin.casdoor.service.CasdoorAuthService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,9 +44,11 @@ public class CasdoorAuthenticator extends AbstractSsoAuthenticator {
     private CasdoorAuthService casdoorAuthService;
     @Value("${casdoor.redirect-url}")
     private String redirectUrl;
+    @Value("${security.authentication.casdoor.user.admin:#{null}}")
+    private String adminUserName;
 
     @Override
-    public User login(String state, String code, String extra) {
+    public User login(@NonNull String userName, String code) {
         ServletRequestAttributes servletRequestAttributes =
                 (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
         if (servletRequestAttributes == null) {
@@ -55,21 +59,26 @@ public class CasdoorAuthenticator extends AbstractSsoAuthenticator {
         // Invalid state
         request.getSession().setAttribute(Constants.SSO_LOGIN_USER_STATE, null);
         // Check state to protect from CSRF attack
-        if (originalState == null || !MessageDigest.isEqual(originalState.getBytes(), state.getBytes())) {
+        if (originalState == null || !MessageDigest.isEqual(originalState.getBytes(), userName.getBytes())) {
             return null;
         }
 
-        String token = casdoorAuthService.getOAuthToken(code, state);
+        String token = casdoorAuthService.getOAuthToken(code, userName);
         CasdoorUser casdoorUser = casdoorAuthService.parseJwtToken(token);
         User user = null;
         if (casdoorUser.getName() != null) {
             // check if user exist
             user = usersService.getUserByUserName(casdoorUser.getName());
             if (user == null) {
-                user = usersService.createUser(UserType.GENERAL_USER, casdoorUser.getName(), casdoorUser.getEmail());
+                user = usersService.createUser(getUserType(casdoorUser.getName()), casdoorUser.getName(),
+                        casdoorUser.getEmail());
             }
         }
         return user;
+    }
+
+    public UserType getUserType(String userName) {
+        return adminUserName.equalsIgnoreCase(userName) ? UserType.ADMIN_USER : UserType.GENERAL_USER;
     }
 
     @Override

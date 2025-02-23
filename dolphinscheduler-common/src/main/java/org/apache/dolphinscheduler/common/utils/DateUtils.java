@@ -67,6 +67,11 @@ public final class DateUtils {
         return date2LocalDateTime(date, zoneId);
     }
 
+    public static String getTimezone() {
+        String timezone = ThreadLocalContext.getTimezoneThreadLocal().get();
+        return StringUtils.isNotEmpty(timezone) ? timezone : ZoneId.systemDefault().getId();
+    }
+
     /**
      * date to local datetime
      *
@@ -75,7 +80,7 @@ public final class DateUtils {
      * @return local datetime
      */
     private static LocalDateTime date2LocalDateTime(Date date, ZoneId zoneId) {
-        return LocalDateTime.ofInstant(date.toInstant(), zoneId);
+        return LocalDateTime.ofInstant(Instant.ofEpochMilli(date.getTime()), zoneId);
     }
 
     /**

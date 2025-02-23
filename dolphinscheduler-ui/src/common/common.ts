@@ -30,7 +30,6 @@ import {
   StopOutlined,
   IssuesCloseOutlined,
   SendOutlined,
-  HistoryOutlined,
   HourglassOutlined
 } from '@vicons/antd'
 import { format, parseISO } from 'date-fns'
@@ -220,6 +219,14 @@ export const tasksState = (t: any): ITaskStateConfig => ({
     isSpin: false,
     classNames: 'pause'
   },
+  STOP: {
+    id: 5,
+    desc: `${t('project.workflow.stop')}`,
+    color: '#e90101',
+    icon: StopOutlined,
+    isSpin: false,
+    classNames: 'stop'
+  },
   FAILURE: {
     id: 6,
     desc: `${t('project.workflow.failed')}`,
@@ -353,14 +360,6 @@ export const workflowExecutionState = (
     isSpin: false,
     classNames: 'success'
   },
-  DELAY_EXECUTION: {
-    id: 12,
-    desc: `${t('project.workflow.delay_execution')}`,
-    color: '#5102ce',
-    icon: PauseCircleFilled,
-    isSpin: false,
-    classNames: 'delay_execution'
-  },
   SERIAL_WAIT: {
     id: 14,
     desc: `${t('project.workflow.serial_wait')}`,
@@ -369,30 +368,14 @@ export const workflowExecutionState = (
     isSpin: true,
     classNames: 'serial_wait'
   },
-  READY_BLOCK: {
-    id: 15,
-    desc: `${t('project.workflow.ready_to_block')}`,
-    color: '#5101be',
-    icon: SendOutlined,
-    isSpin: false,
-    classNames: 'pending'
-  },
-  BLOCK: {
-    id: 16,
-    desc: `${t('project.workflow.block')}`,
-    color: '#5101be',
-    icon: HistoryOutlined,
-    isSpin: false,
-    classNames: 'pending'
-  },
   WAIT_TO_RUN: {
     id: 18,
-    desc: `${t('project.overview.wait_to_run')}`,
+    desc: `${t('project.workflow.wait_to_run')}`,
     color: '#5102ce',
     icon: HourglassOutlined,
     isSpin: false,
     classNames: 'wait_to_run'
-  },
+  }
 })
 
 /**

@@ -20,6 +20,8 @@ on:
   push:
     branches:
       - dev
+      - '[0-9]+.[0-9]+.[0-9]+-prepare'
+      - '[0-9]+.[0-9]+.[0-9]+-release'
 
 name: E2E-K8S
 
@@ -35,7 +37,7 @@ jobs:
     outputs:
       not-ignore: ${{ steps.filter.outputs.not-ignore }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - uses: dorny/paths-filter@b2feaf19c27470162a626bd6fa8438ae5b263721
         id: filter
         with:
@@ -47,31 +49,35 @@ jobs:
     needs: paths-filter
     if: ${{ (needs.paths-filter.outputs.not-ignore == 'true') || (github.event_name == 'push') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Maximize runner space
+        uses: ./.github/actions/maximize-build-space
+        with:
+          root-reserve-mb: 30720
+          temp-reserve-mb: 10240
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+          remove-docker-images: 'true'
+      - uses: actions/checkout@v4
         with:
           submodules: true
       - name: Build Image
         run: |
           ./mvnw -B clean package \
-          -Dmaven.test.skip \
-          -Dmaven.javadoc.skip \
+          -Dmaven.test.skip=true \
           -Dspotless.skip=true \
-          -Dmaven.checkstyle.skip \
-          -Dmaven.deploy.skip \
-          -Ddocker.push.skip=true \
-          -Pdocker,release -Ddocker.tag=ci \
-          -pl org.apache.dolphinscheduler:dolphinscheduler-alert-server \
-          -pl dolphinscheduler-tools \
-          -pl dolphinscheduler-api \
-          -pl dolphinscheduler-master \
-          -pl dolphinscheduler-worker -am
+          -Pdocker,staging -Ddocker.tag=ci
       - name: Create k8s Kind Cluster
         run: |
           # install kubectl
-          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-          sudo chmod +x kubectl /usr/local/bin/kubectl
+          curl -LO "https://dl.k8s.io/release/v1.28.3/bin/linux/amd64/kubectl"
+          sudo chmod +x kubectl
           sudo mv kubectl /usr/local/bin/kubectl
 
           # install kind
@@ -84,7 +90,7 @@ jobs:
           kind_node_image="kindest/node:v1.23.17"
           echo "Kubernetes version: ${kind_node_image}"
           kind create cluster --name dolphinscheduler --image ${kind_node_image}
-          kubectl version --short
+          kubectl version
           kubectl get all --all-namespaces
       - name: Load images
         run: |
@@ -145,3 +151,20 @@ jobs:
               done
             done
           done
+  result:
+    name: E2E-K8S-Result
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [ e2e-k8s, paths-filter ]
+    if: always()
+    steps:
+      - name: Status
+        run: |
+          if [[ ${{ needs.paths-filter.outputs.not-ignore }} == 'false' && ${{ github.event_name }} == 'pull_request' ]]; then
+            echo "Skip E2E-K8S!"
+            exit 0
+          fi
+          if [[ ${{ needs.e2e-k8s.result }} != 'success' ]]; then
+            echo "E2E-K8S Failed!"
+            exit -1
+          fi
